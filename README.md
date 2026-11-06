@@ -1,5 +1,8 @@
 # Maquete 3D Interativa — Praça da Juventude (Canabrava, Salvador/BA)
 
+> **🔗 Link público (Vercel):** https://maquete-praca-juventude.vercel.app
+> **Repositório:** https://github.com/ANTHONY20-melo/maquete-praca-juventude
+
 Reconstrução **fiel à realidade** da Praça da Juventude da Canabrava —
 Av. Artêmio Castro Valente, 380‑346, Salvador/BA (em frente ao estacionamento do Barradão).
 
