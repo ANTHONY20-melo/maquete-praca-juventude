@@ -31,13 +31,20 @@ const avatarState = { x: 19, z: -42 };
 const BOUND = { x1: -40, x2: 37.5, z1: -79, z2: 68.5 };
 const WALK_SPEED = 5.2, RUN_SPEED = 9.5;
 
+/* --------------- Controles de toque (celular / tablet) ------------------ */
+const IS_TOUCH = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+const touchMap = {};                       /* id de toque -> { type, lastX, lastY, dist } */
+const joyVec = { x: 0, y: 0 };             /* joystick virtual: -1..1 */
+let pinch = { active: false, startDist: 0, startRadius: 0 };
+let pinchHappened = false;                 /* suprime o tap de incêndio no fim de uma pinça */
+
 /* --------------------------------- Setup ------------------------------ */
 const container = document.getElementById('app');
 camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 1200);
 orbit.target = new THREE.Vector3(0, 1, -5);
 
-renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer = new THREE.WebGLRenderer({ antialias: !IS_TOUCH });
+renderer.setPixelRatio(Math.min(devicePixelRatio, IS_TOUCH ? 1.75 : 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -52,7 +59,7 @@ scene.add(new THREE.HemisphereLight(0xe8f4ff, 0x6b7a5a, 0.85));
 const sun = new THREE.DirectionalLight(0xfff1d6, 1.05);
 sun.position.set(-70, 120, -60);
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.mapSize.set(IS_TOUCH ? 1024 : 2048, IS_TOUCH ? 1024 : 2048);
 sun.shadow.camera.left = -160; sun.shadow.camera.right = 160;
 sun.shadow.camera.top = 160; sun.shadow.camera.bottom = -160;
 sun.shadow.camera.far = 420;
@@ -1227,6 +1234,7 @@ const btnEva = document.getElementById('btnEvacuacao');
 const btnCrowd = document.getElementById('btnPessoas');
 const btnFire = document.getElementById('btnFogo');
 const btnSimE = document.getElementById('btnSimEvac');
+const btnFP = document.getElementById('btnVisao');
 const hint = document.getElementById('hint');
 const badge = document.getElementById('modeBadge');
 
@@ -1236,9 +1244,13 @@ function updHint() {
     return;
   }
   if (mode === 'orbital') {
-    hint.innerHTML = 'Arraste para girar a maquete · <b>Scroll</b> para zoom · <b>S</b> segurança · <b>P</b> pessoas · <b>F</b> incêndio · <b>X</b> evacuar';
+    hint.innerHTML = IS_TOUCH
+      ? '<b>Arraste</b> para girar a maquete · <b>Pinça</b> para zoom · <b>P</b> pessoas · <b>F</b> incêndio · <b>X</b> evacuar'
+      : 'Arraste para girar a maquete · <b>Scroll</b> para zoom · <b>S</b> segurança · <b>P</b> pessoas · <b>F</b> incêndio · <b>X</b> evacuar';
   } else if (!locked) {
-    hint.innerHTML = '<b>Clique na tela</b> para assumir o controle do avatar';
+    hint.innerHTML = IS_TOUCH
+      ? '<b>Joystick</b> (lado esquerdo) para andar · <b>Arraste</b> o resto da tela para olhar 360°'
+      : '<b>Clique na tela</b> para assumir o controle do avatar';
   } else {
     hint.innerHTML = '<b>W A S D</b> andar · <b>Shift</b> correr · <b>Mouse</b> olhar · <b>V</b> 1ª/3ª pessoa · <b>Esc</b> soltar';
   }
@@ -1254,14 +1266,22 @@ function setMode(m) {
     cameraUp();
     badge.textContent = 'Vista Geral';
   } else {
-    renderer.domElement.requestPointerLock();
+    /* pointer lock não existe em celular/tablet — no touch o olhar é por arraste */
+    if (!IS_TOUCH) renderer.domElement.requestPointerLock();
     badge.textContent = firstPerson ? 'Passeio — 1ª Pessoa' : 'Passeio — Avatar';
   }
   badge.classList.toggle('sec', secOn);
   updHint();
 }
+function toggleFP() {
+  firstPerson = !firstPerson;
+  document.body.classList.toggle('fp', firstPerson);
+  badge.textContent = 'Passeio — ' + (firstPerson ? '1ª Pessoa' : 'Avatar');
+  updHint();
+}
 btnOrb.onclick = function () { setMode('orbital'); };
 btnWalk.onclick = function () { setMode('passeio'); };
+btnFP.onclick = toggleFP;
 
 function applySec(v) {
   secOn = v;
@@ -1304,9 +1324,7 @@ addEventListener('keydown', function (e) {
   keys[e.code] = true;
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].indexOf(e.code) >= 0) e.preventDefault();
   if (e.code === 'KeyV' && mode === 'passeio') {
-    firstPerson = !firstPerson;
-    document.body.classList.toggle('fp', firstPerson);
-    badge.textContent = 'Passeio — ' + (firstPerson ? '1ª Pessoa' : 'Avatar');
+    toggleFP();
   }
   if (e.code === 'KeyS' && mode === 'orbital') applySec(!secOn);
   if (e.code === 'KeyL' && mode === 'orbital') applyLabels(!labelsOn);
@@ -1347,22 +1365,160 @@ addEventListener('mousemove', function (e) { if (drag) dragDist += Math.abs(e.mo
 addEventListener('mouseup', function (e) {
   if (drag && dragDist < 6 && fireOn && mode === 'orbital' && e.button === 0) {
     /* clique curto com incêndio ativo → mover o foco de incêndio para o chão clicado */
-    const ndc = new THREE.Vector2(
-      (e.clientX / window.innerWidth) * 2 - 1,
-      -(e.clientY / window.innerHeight) * 2 + 1
-    );
-    const ray = new THREE.Raycaster();
-    ray.setFromCamera(ndc, camera);
-    const hit = ray.intersectObject(firePlane);
-    if (hit.length) spawnFire(hit[0].point.x + 60, hit[0].point.z + 40);
+    pickFireFloor(e.clientX, e.clientY);
   }
   drag = false;
 });
+function pickFireFloor(px, py) {
+  const ndc = new THREE.Vector2(
+    (px / window.innerWidth) * 2 - 1,
+    -(py / window.innerHeight) * 2 + 1
+  );
+  const ray = new THREE.Raycaster();
+  ray.setFromCamera(ndc, camera);
+  const hit = ray.intersectObject(firePlane);
+  if (hit.length) spawnFire(hit[0].point.x + 60, hit[0].point.z + 40);
+}
 addEventListener('wheel', function (e) {
   if (mode !== 'orbital') return;
   orbit.radius = Math.max(30, Math.min(420, orbit.radius * (e.deltaY > 0 ? 1.09 : 0.92)));
   cameraUp();
 }, { passive: true });
+
+/* ------------------------ Touch (celular / tablet) ---------------------- */
+if (IS_TOUCH) {
+  document.body.classList.add('touch');
+  const kbdHelp = document.getElementById('kbdHelp');
+  if (kbdHelp) {
+    kbdHelp.innerHTML = '<b>Arrastar</b> girar · <b>Pinça</b> zoom<br><b>Avatar</b>: joystick à esquerda · arrastar = olhar';
+  }
+
+  const joy = document.getElementById('joy');
+  const joyKnob = document.getElementById('joyKnob');
+  const JOY_R = 52;                                   /* raio do joystick, px */
+  let joyCx = 0, joyCy = 0;
+
+  function joyShow(x, y) {
+    joyCx = x; joyCy = y;
+    joy.style.left = (x - 65) + 'px';
+    joy.style.top = (y - 65) + 'px';
+    joy.classList.add('show');
+    joyKnob.style.transform = 'translate(0px,0px)';
+    joyVec.x = 0; joyVec.y = 0;
+  }
+  function joyHide() {
+    joy.classList.remove('show');
+    joyVec.x = 0; joyVec.y = 0;
+  }
+  function joyMove(x, y) {
+    let dx = x - joyCx, dy = y - joyCy;
+    const d = Math.hypot(dx, dy);
+    if (d > JOY_R) { dx = dx / d * JOY_R; dy = dy / d * JOY_R; }
+    joyKnob.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
+    joyVec.x = dx / JOY_R; joyVec.y = dy / JOY_R;
+  }
+  function orbitTouchIds() {
+    const arr = [];
+    for (const id in touchMap) if (touchMap[id].type === 'orbit') arr.push(id);
+    return arr;
+  }
+  function refreshLast(id, x, y) {
+    const st = touchMap[id];
+    if (st) { st.lastX = x; st.lastY = y; }
+  }
+
+  renderer.domElement.addEventListener('touchstart', function (e) {
+    e.preventDefault();
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      const t = e.changedTouches[i];
+      const walkZone = mode === 'passeio' && t.clientX < innerWidth * 0.5 && t.clientY > innerHeight * 0.45;
+      if (walkZone) {
+        touchMap[t.identifier] = { type: 'joy' };
+        joyShow(t.clientX, t.clientY);
+      } else {
+        touchMap[t.identifier] = {
+          type: mode === 'orbital' ? 'orbit' : 'look',
+          lastX: t.clientX, lastY: t.clientY, dist: 0
+        };
+      }
+    }
+    /* 2 dedos em modo orbital → pinça de zoom */
+    if (mode === 'orbital') {
+      const ids = orbitTouchIds();
+      if (ids.length === 2) {
+        const a = touchMap[ids[0]], b = touchMap[ids[1]];
+        pinch = { active: true, startDist: Math.hypot(a.lastX - b.lastX, a.lastY - b.lastY), startRadius: orbit.radius };
+        pinchHappened = true;
+      }
+    }
+  }, { passive: false });
+
+  renderer.domElement.addEventListener('touchmove', function (e) {
+    e.preventDefault();
+    if (pinch.active) {
+      const pts = [];
+      for (let i = 0; i < e.touches.length; i++) {
+        const st = touchMap[e.touches[i].identifier];
+        if (st && st.type === 'orbit') {
+          st.lastX = e.touches[i].clientX; st.lastY = e.touches[i].clientY;
+          pts.push(st);
+        }
+      }
+      if (pts.length >= 2) {
+        const d = Math.hypot(pts[0].lastX - pts[1].lastX, pts[0].lastY - pts[1].lastY);
+        if (d > 10) {
+          orbit.radius = Math.max(30, Math.min(420, pinch.startRadius * pinch.startDist / d));
+          cameraUp();
+        }
+      }
+      return;
+    }
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      const t = e.changedTouches[i];
+      const st = touchMap[t.identifier];
+      if (!st) continue;
+      const dx = t.clientX - st.lastX, dy = t.clientY - st.lastY;
+      st.dist += Math.abs(dx) + Math.abs(dy);
+      if (st.type === 'orbit') {
+        orbit.theta -= dx * 0.0052;
+        orbit.phi = Math.max(0.12, Math.min(1.44, orbit.phi - dy * 0.0052));
+        cameraUp();
+      } else if (st.type === 'look') {
+        yaw -= dx * 0.005;
+        pitch = Math.max(-1.2, Math.min(1.2, pitch - dy * 0.0036));
+      } else if (st.type === 'joy') {
+        joyMove(t.clientX, t.clientY);
+      }
+      st.lastX = t.clientX; st.lastY = t.clientY;
+    }
+  }, { passive: false });
+
+  function touchEndHandler(e) {
+    e.preventDefault();
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      const t = e.changedTouches[i];
+      const st = touchMap[t.identifier];
+      if (st) {
+        if (st.type === 'joy') joyHide();
+        else if (st.type === 'orbit' && mode === 'orbital' && st.dist < 14 &&
+                 fireOn && !pinch.active && !pinchHappened && orbitTouchIds().length === 1) {
+          pickFireFloor(t.clientX, t.clientY);
+        }
+        delete touchMap[t.identifier];
+      }
+    }
+    if (pinch.active && orbitTouchIds().length < 2) {
+      pinch.active = false;
+      /* evita salto de rotação ao sair da pinça */
+      for (let i = 0; i < e.touches.length; i++) {
+        refreshLast(e.touches[i].identifier, e.touches[i].clientX, e.touches[i].clientY);
+      }
+    }
+    if (orbitTouchIds().length === 0) pinchHappened = false;
+  }
+  renderer.domElement.addEventListener('touchend', touchEndHandler, { passive: false });
+  renderer.domElement.addEventListener('touchcancel', touchEndHandler, { passive: false });
+}
 
 /* Câmera orbital */
 function cameraUp() {
@@ -1397,7 +1553,8 @@ function collide(nx, nz) {
 }
 
 function updateWalk(dt) {
-  const run = keys['ShiftLeft'] || keys['ShiftRight'];
+  const jmag = Math.min(1, Math.hypot(joyVec.x, joyVec.y));
+  const run = keys['ShiftLeft'] || keys['ShiftRight'] || jmag > 0.85;
   const sp = (run ? RUN_SPEED : WALK_SPEED) * dt;
   const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
   const rx = -fz, rz = fx;
@@ -1406,6 +1563,12 @@ function updateWalk(dt) {
   if (keys['KeyS'] || keys['ArrowDown']) { mx -= fx; mz -= fz; }
   if (keys['KeyA'] || keys['ArrowLeft']) { mx -= rx; mz -= rz; }
   if (keys['KeyD'] || keys['ArrowRight']) { mx += rx; mz += rz; }
+  /* joystick virtual (celular): y = frente/trás, x = esquerda/direita, analógico */
+  if (jmag > 0.08) {
+    const jx = joyVec.x, jy = -joyVec.y;
+    mx += fx * jy + rx * jx;
+    mz += fz * jy + rz * jx;
+  }
   const mag = Math.hypot(mx, mz);
   const moving = mag > 0.001;
   if (moving) {

@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Maquete 3D — Praça da Juventude | Salvador/BA</title>
 <style>
   :root{
@@ -15,7 +15,7 @@
   html,body{ width:100%; height:100%; overflow:hidden; background:#0b1220;
     font-family:'Segoe UI', Arial, sans-serif; color:#e5eef7; }
   #app{ position:fixed; inset:0; }
-  canvas{ display:block; }
+  canvas{ display:block; touch-action:none; }
   body.walk{ cursor: crosshair; }
 
   /* ---------- Painel de título ---------- */
@@ -100,6 +100,20 @@
   }
   #simStatus.show{ display:block; }
   #simStatus b{ color:#fff; }
+
+  /* ---------- Controles de toque (celular) ---------- */
+  #fpRow{ display:none; }
+  body.walk #fpRow{ display:flex; }
+  #joy{
+    position:fixed; left:0; top:0; width:130px; height:130px; border-radius:50%;
+    border:2px solid rgba(255,255,255,.35); background:rgba(10,18,32,.45);
+    display:none; z-index:12; pointer-events:none;
+  }
+  #joy.show{ display:block; }
+  #joyKnob{
+    position:absolute; left:50%; top:50%; width:56px; height:56px; margin:-28px 0 0 -28px;
+    border-radius:50%; background:rgba(56,189,248,.45); border:2px solid rgba(56,189,248,.85);
+  }
 </style>
 </head>
 <body>
@@ -121,6 +135,9 @@
   <div class="btnrow">
     <button id="btnOrbital" class="orbbtn on">Vista Geral</button>
     <button id="btnPasseio" class="walkbtn">Avatar</button>
+  </div>
+  <div class="btnrow" id="fpRow">
+    <button id="btnVisao">1ª / 3ª Pessoa</button>
   </div>
   <div class="label">Camadas do projeto</div>
   <div class="btnrow">
@@ -161,6 +178,8 @@
 </div>
 
 <div id="hint" class="panel">Arraste para girar a maquete · <b>Scroll</b> para zoom</div>
+
+<div id="joy"><div id="joyKnob"></div></div>
 
 <div id="simStatus"></div>
 

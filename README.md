@@ -86,6 +86,16 @@ Entrada: nasce junto ao Portão E1 e pode atravessar os portões, entrar no gin�
 correr no campo e/ou usar o corredor entre as quadras. Colisões com muro, ginásio, anexo,
 quiosque e portaria.
 
+## Celular / tablet (controles de toque)
+
+- **Vista Geral:** arraste 1 dedo para girar 360° · **pinça** de 2 dedos para zoom ·
+  toque curto no chão com incêndio ativo move o foco.
+- **Avatar:** **joystick** flutuante no lado esquerdo da tela para andar
+  (empurre até a borda = correr) · **arraste** o restante da tela para olhar 360° ·
+  botão **1ª / 3ª Pessoa** aparece no painel.
+- Funciona no link da Vercel e no arquivo local; em celular o navegador não tem
+  pointer lock, então o olhar é sempre por arraste.
+
 ## Estrutura
 
 ```
